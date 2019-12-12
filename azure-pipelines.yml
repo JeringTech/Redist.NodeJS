@@ -1,0 +1,19 @@
+trigger:
+- master
+
+resources:
+  repositories:
+  - repository: templates
+    type: github
+    name: JeringTech/DevOps.AzurePipelines
+    endpoint: JeringTech
+
+jobs:
+- template: templates/nuget/main.yml@templates
+  parameters:
+    nugetUnreleasedPrereleasePushEndpoint: "https://www.myget.org/F/jering/api/v3/index.json"
+    outOfProcessTestDependencies: ["ffmpeg"]
+- template: templates/docs/main.yml@templates
+  parameters:
+    nugetRestoreEndpoints: "https://pkgs.dev.azure.com/JeremyTCD/_packaging/Main/nuget/v2"
+    nugetRestorePats: "$(nugetRestorePats)"

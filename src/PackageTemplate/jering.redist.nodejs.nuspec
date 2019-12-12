@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd">
+  <metadata>
+    <id>Jering.Redist.NodeJS</id>
+    <version>1.0.0</version>
+    <title>Node.js® is a JavaScript runtime built on Chrome's V8 JavaScript engine.</title>
+    <authors>JeremyTCD</authors>
+    <owners>JeremyTCD</owners>
+    <licenseUrl>https://github.com/JeringTech/Redist.NodeJS/blob/master/License.md</licenseUrl>
+    <projectUrl>https://github.com/JeringTech/Redist.NodeJS</projectUrl>
+    <iconUrl>https://raw.githubusercontent.com/JeringTech/Redist.NodeJS/master/nuget_icon.png</iconUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <description>Jering.Redist.NodeJS places NodeJS executables in your application's output directory. This package is automatically updated. Package versions correspond to NodeJS versions.</description>
+    <copyright>© 2018-2019 Jering. All rights reserved.</copyright>
+    <tags>nodejs</tags>
+    <repository type="git" url="https://github.com/JeringTech/Jering.Redist.NodeJS" />
+  </metadata>
+</package>
