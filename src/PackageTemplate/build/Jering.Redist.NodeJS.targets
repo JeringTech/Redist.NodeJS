@@ -5,6 +5,20 @@
 -->
 <Project InitialTargets="IncludeNodeJSExecutables" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
     <!-- 
+        MSBuild never copies native assets for legacy projects (projects using the legacy .csproj format and packages.config).
+        So we manually copy assets.
+
+        TODO Even if we add CopyToPublishDirectory to our None items, msbuild never copies native assets to the publish directory.
+    -->
+    <PropertyGroup>
+        <IsLegacyProject>false</IsLegacyProject>
+        <!-- Exists function resolves paths relative to entry .csproj file -->
+        <IsLegacyProject Condition="Exists('packages.config') Or
+                                    Exists('$(MSBuildProjectName).packages.config') Or
+                                    Exists('packages.$(MSBuildProjectName).config')">true</IsLegacyProject>
+    </PropertyGroup>
+
+    <!-- 
         .Net SDK doesn't copy native assets for .Net framework library builds if no RuntimeIdentifier is specified. This is an issue because
         because:
             - .Net framework test projects are libraries.
@@ -12,9 +26,10 @@
         So we manually copy assets.
     -->
     <PropertyGroup Condition="'$(NodeJSExecutables)' == ''
-                             And '$(TargetFrameworkIdentifier)' == '.NETFramework'
-                             And '$(OutputType)' == 'Library'
-                             And '$(RuntimeIdentifier)' == ''">
+                              And (('$(TargetFrameworkIdentifier)' == '.NETFramework'
+                              And '$(OutputType)' == 'Library'
+                              And '$(RuntimeIdentifier)' == '')
+                              Or '$(IsLegacyProject)' == 'true')">
         <NodeJSExecutables Condition="'$(PlatformTarget)' == 'x64'">win-x64</NodeJSExecutables>
         <NodeJSExecutables Condition="'$(PlatformTarget)' != 'x64'">win-x86</NodeJSExecutables>
     </PropertyGroup>
@@ -23,7 +38,7 @@
         If NodeJSExecutables is specified, copy executables manually. Note that if .Net SDK already copies native assets,
         these manually copied executables are copied in addition to what .Net SDK copies.
 
-        TODO If possible, suppress .Net SDK copying when NodeJSExecutables is specified. This must be done without affecting copying of native
+        TODO Suppress default native asset copying when NodeJSExecutables is specified. This must be done without affecting copying of native
         assets from other dependencies.
     -->
     <Target Name="IncludeNodeJSExecutables" Condition="'$(NodeJSExecutables)' != ''">
