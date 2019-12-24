@@ -7,6 +7,15 @@ We add a fourth digit when we make changes to NuGet package structure/metadata. 
 - We might've added NodeJS for additional platforms, e.g `win-arm64`.
 - We might've made changes to .nuspec, [.props or .targets](https://docs.microsoft.com/en-us/nuget/create-packages/creating-a-package#include-msbuild-props-and-targets-in-a-package) files.
 
+## [10.14.1](https://github.com/nodejs/node/blob/master/doc/changelogs/CHANGELOG_V10.md#10.14.1) - Dec 24, 2019
+### Executables
+- win-x86
+- osx-x64
+- linux-arm
+- linux-arm64
+- win-x64
+- linux-x64
+
 ## [10.14.0](https://github.com/nodejs/node/blob/master/doc/changelogs/CHANGELOG_V10.md#10.14.0) - Dec 24, 2019
 ### Executables
 - win-x86
