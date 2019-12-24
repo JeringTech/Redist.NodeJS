@@ -1,6 +1,9 @@
 <#
 .SYNOPSIS
     Updates the Jering.Redist.NodeJS package feed on NuGet.Org.
+
+    This script can be run locally or as an Azure Pipelines task. It requires Chocolatey and several environment variables. 
+    Refer to the constants declaration section for the required environment variables.
 .DESCRIPTION
     Performs the following operations:
 
@@ -15,113 +18,77 @@
     We keep output "verbose" and clear since it is effectively our log (AzurePipelines build logs).
 #>
 
-#----------------------------------------------------------[Declarations]----------------------------------------------------------
-
-# Map of selected .Net runtime identifiers to information on the files to download for them.
-$archivesToDownload = @{
-    "linux-arm"   = @{ "platform" = "linux-armv7l"; "extension" = ".tar.gz" }
-    "linux-arm64" = @{ "platform" = "linux-arm64"; "extension" = ".tar.gz" }
-    "linux-x64"   = @{ "platform" = "linux-x64"; "extension" = ".tar.gz" }
-    "osx-x64"     = @{ "platform" = "darwin-x64"; "extension" = ".tar.gz" }
-    "win-x64"     = @{ "platform" = "win-x64"; "extension" = ".7z" }
-    "win-x86"     = @{ "platform" = "win-x86"; "extension" = ".7z" }
-};
-
-# Constants
-$dirSeparator = [IO.Path]::DirectorySeparatorChar;
-$rootDir = resolve-path "$PSScriptRoot/..";
-$srcDir = Join-Path -path $rootDir -childpath "src";
-$objDir = Join-Path -path $rootDir -childpath "obj";
-$tempDir = Join-Path -path $objDir -childpath "temp";
-$nodejsRepo = "https://github.com/nodejs/node.git";
-$nugetPat = "oy2eyhzkfgapdv2gcpeaqufu6rinhg2e5gvyoxluyeyafe";
-$nugetEndpoint = "https://apiint.nugettest.org/v3/index.json";
-$changelogVersionLinePattern = '^##[ \t]*\[(\d+\.\d+\.\d+)\]';
-
-# Variables
-$indentation = "";
-$addedPackageVersions = New-object Collections.Generic.List[String];
 #-----------------------------------------------------------[Functions]------------------------------------------------------------
 
 # TODO
-# - logic for updating changelog
-#   - push to repo using bot
-#   - trial run locally
-#   - refer to devops.azurepipelines for handling package already exists situations
-#       - test by removing version that already exists from changelog
-# - run end to end locally, publish 1 version to int.nuget + update changelog
-# - run on azure pipelines, publish 1 version to int.nuget + update changelog
-# - schedule azure pipelines automated build, publish all remaining versions to int.nuget + update changelog
-
-# Note: Expects Chocolatey to be available and expects powershell process to have administrator privileges
+# - read through scheduled build logs
 
 function FindNewVersions() {
     # Retrieve release versions
     WriteSectionHeader "Retrieving release versions from `"$nodejsRepo`":";
     $allTags = git ls-remote --tags --sort=v:refname $nodejsRepo;
-    HandleExternalProcessError("Release versions retrieval failed.");
-    $releaseVersions = $allTags | select-string -pattern ".*?refs/tags/v(\d{2,}\.\d+\.\d+)$" | foreach-object { $_.matches.groups[1].value };
-    $releaseVersions | WriteSectionBody;
-    WriteLine
+    HandleExternalProcessError "Failed to retrieve release versions.";
+    $releaseVersions = $allTags | Select-String ".*?refs/tags/v(\d{2,}\.\d+\.\d+)$" | ForEach-Object { $_.Matches.Groups[1].Value };
+    WriteSectionBody $releaseVersions;
+    WriteLine;
 
     # Retrieve package versions
-    $changelogPath = Join-Path -path $rootDir -childpath "Changelog.md";
-    WriteSectionHeader "Retrieving package versions from `"$changelogPath`":"
-    $packageVersions = get-content $changelogPath | select-string -pattern $changelogVersionLinePattern | foreach-object { $_.matches.groups[1].value };
-    $packageVersions | WriteSectionBody;
-    WriteLine
+    WriteSectionHeader "Retrieving package versions from `"$changelogPath`":";
+    $packageVersions = Get-Content $changelogPath | Select-String $changelogVersionLinePattern | ForEach-Object { $_.Matches.Groups[1].Value };
+    WriteSectionBody $packageVersions;
+    WriteLine;
 
     # Find new versions
-    WriteSectionHeader "Identifying new versions:"
-    $newVersions = $releaseVersions | where-object { -not($packageVersions -contains $_) };
+    WriteSectionHeader "Identifying new versions:";
+    $newVersions = $releaseVersions | Where-Object { -not($packageVersions -contains $_) };
     if ($newVersions) {
-        $newVersions | WriteSectionBody;
-        WriteLine
-        return $true;
+        WriteSectionBody $newVersions;
+        WriteLine;
     }
     else {
-        WriteSectionFooter "No new versions." $true
-        return $false;
+        WriteSectionFooter "No new versions." $true;
     }
+
+    return $newVersions;
 }
 
 function AddPackage($version) {
     $packageName = "Jering.Redist.NodeJS.$($version).nupkg";
     WriteSectionHeader "Adding $($packageName):";
     IncreaseIndent;
-    
+
     # Create obj directory
     WriteSectionHeader "Creating `"$objDir`":";
-    remove-item $objDir -r -erroraction "ignore"; # Delete existing folder
-    new-item -path $rootDir -name "obj" -itemtype "directory" | WriteSectionBody;
-    WriteLine
+    Remove-Item $objDir -Recurse -ErrorAction "ignore"; # Delete existing folder
+    New-Item $objDir -ItemType "directory" | WriteSectionBody;
+    WriteLine;
 
     # Copy package template to directory
-    $srcPackageTemplateDir = Join-Path -path $srcDir -ChildPath "PackageTemplate";
-    $objPackageTemplateDir = Join-Path -path $objDir -ChildPath "PackageTemplate";
+    $srcPackageTemplateDir = Join-Path $srcDir "PackageTemplate";
+    $objPackageTemplateDir = Join-Path $objDir "PackageTemplate";
     WriteSectionHeader "Copying `"$srcPackageTemplateDir$($dirSeparator)**`" to `"$objPackageTemplateDir`":";
-    copy-item -path $srcPackageTemplateDir -destination $objPackageTemplateDir -recurse;
+    Copy-Item $srcPackageTemplateDir $objPackageTemplateDir -Recurse;
     WriteSectionFooter "Package template copied.";
 
     # Retrieve version verification assets
     RetrieveVersionVerificationAssets $version;
 
     # Retrieve executables
-    foreach ($runtimeIdentifier in $archivesToDownload.keys) {
+    foreach ($runtimeIdentifier in $archivesToDownload.Keys) {
         RetrieveExecutable $version $runtimeIdentifier $archivesToDownload[$runtimeIdentifier];
     }
 
     # Pack
     WriteSectionHeader "Packing NuGet package:";
-    nuget pack "$objDir/PackageTemplate" -version $version -outputdirectory $objDir | WriteSectionBody
-    HandleExternalProcessError("NuGet pack failed.");
-    WriteLine
+    nuget pack "$objDir/PackageTemplate" -Version $version -OutputDirectory $objDir | WriteSectionBody
+    HandleExternalProcessError "Failed to pack NuGet package.";
+    WriteLine;
 
     # Push package
-    $packagePath = Join-Path -path $objDir -ChildPath $packageName;
+    $packagePath = Join-Path $objDir $packageName;
     WriteSectionHeader "Pushing `"$packagePath`":";
     $ErrorActionPreference = "continue";
-    $nugetPushOutput = nuget push "C:\Projects\Jering.Redist.NodeJS\obj\Jering.Redist.NodeJS.10.0.0.nupkg" -Source $nugetEndpoint -ApiKey $nugetPat 2>&1 | ForEach-Object{"$_"} | out-string;
+    $nugetPushOutput = nuget push $packagePath -Source $nugetEndpoint -ApiKey $nugetPat 2>&1 | ForEach-Object { "$_" } | Out-String;
     $ErrorActionPreference = "stop";
     WriteSectionBody $nugetPushOutput;
     # Handle push fail
@@ -129,18 +96,18 @@ function AddPackage($version) {
         # 409 returned if a package with the provided ID and version already exists - https://docs.microsoft.com/en-us/nuget/api/package-publish-resource#push-a-package
         if ($nugetPushOutput.Contains(" 409 ")) {
             # If package already exists, continue processing
-            # TODO check whether package exists before constructing package.
+            # TODO check whether package exists before creating package.
             WriteLine;
-            WriteSectionBody "$packageName already exists in feed $nugetEndpoint."
+            WriteSectionBody "$packageName already exists in feed $nugetEndpoint.";
         }
         else {
-            throw "NuGet push failed."
+            throw "Failed to push NuGet package.";
         }
     }
-    WriteLine
+    WriteLine;
 
-    # Update added package versions
-    $addedPackageVersions.Add($version);
+    # Update changelog
+    UpdateChangelog $version;
 
     DecreaseIndent;
 }
@@ -149,74 +116,79 @@ function RetrieveExecutable($version, $runtimeIdentifier, $archiveToDownload) {
     $platform = $archiveToDownload["platform"];
     $extension = $archiveToDownload["extension"];
     $archiveName = "node-v$version-$platform$extension";
-    $packageNodeDir = Join-Path -path $objDir -childpath "PackageTemplate/runtimes/$runtimeIdentifier/native";
-    
+    $packageNodeDir = Join-Path $objDir "PackageTemplate/runtimes/$runtimeIdentifier/native";
+
     WriteSectionHeader "Retrieving executable for $($runtimeIdentifier):";
     IncreaseIndent;
 
     # Create temp dir
     WriteSectionHeader "Creating `"$tempDir`":";
-    remove-item "$tempDir" -r -erroraction "ignore";
-    new-item -path "$objDir" -name "temp" -itemtype "directory" | WriteSectionBody;
-    WriteLine
+    Remove-Item $tempDir -Recurse -ErrorAction "ignore";
+    New-Item $tempDir -ItemType "directory" | WriteSectionBody;
+    WriteLine;
 
     # Download archive
     $archiveUri = "https://nodejs.org/dist/v$version/$archiveName";
     WriteSectionHeader "Downloading `"$archiveUri`" to `"$tempDir`":";
-    $archivePath = Join-Path -path $tempDir -childpath $archiveName;
-    invoke-webrequest -uri $archiveUri -outfile "$archivePath";
+    $archivePath = Join-Path $tempDir $archiveName;
+    Invoke-WebRequest $archiveUri -OutFile "$archivePath";
     WriteSectionFooter "`"$archiveUri`" downloaded.";
 
     # Verify archive
     WriteSectionHeader "Verifying `"$archivePath`":";
-    $expectedShasumLine = (get-content "$objDir/shasums256.txt" | where-object { $_.contains($archiveName) }).ToLower();
-    "Expected shasum line: $expectedShasumLine" | WriteSectionBody;
-    $localShasum = (get-filehash -path $archivePath -algorithm "sha256").hash.ToLower();
-    "Local shasum: $localShasum" | WriteSectionBody;
+    $expectedShasumLine = (Get-Content "$objDir/shasums256.txt" | Where-Object { $_.Contains($archiveName) }).ToLower();
+    WriteSectionBody "Expected shasum line: $expectedShasumLine";
+    $localShasum = (Get-FileHash $archivePath "sha256").Hash.ToLower();
+    WriteSectionBody "Local shasum: $localShasum";
     if (-not($expectedShasumLine.Contains($localShasum))) {
-        throw "Archive verification failed."
+        throw "Failed to verify archive.";
     }
-    WriteLine
+    WriteLine;
+
+    # Create temp dir
+    WriteSectionHeader "Creating `"$packageNodeDir`":";
+    New-Item $packageNodeDir -ItemType "directory" | WriteSectionBody;
+    WriteLine;
 
     if ($extension -eq ".7z") {
         # Extract node.exe
         WriteSectionHeader "Extracting node.exe from `"$archivePath`" to `"$tempDir`":" $false;
         7z e "$archivePath" "node.exe" -o"$tempDir" -r | WriteSectionBody;
-        HandleExternalProcessError("node.exe extraction failed.");
-        WriteLine
-        
+        HandleExternalProcessError "Failed to extract node.exe.";
+        WriteLine;
+
         # Copy node.exe to package
-        $nodePath = Join-Path -path $tempDir -childpath "node.exe";
+        $nodePath = Join-Path $tempDir "node.exe";
         WriteSectionHeader "Copying `"$nodePath`" to `"$packageNodeDir`":";
-        copy-item -path $nodePath -destination $packageNodeDir;
+        Copy-Item $nodePath $packageNodeDir;
         WriteSectionFooter "node.exe copied.";
     }
     else {
         #.tar.gz
         # Decompress archive
-        WriteSectionHeader "Decompressing `"$archivePath`" to `"$tempDir`":" $false;    
+        WriteSectionHeader "Decompressing `"$archivePath`" to `"$tempDir`":" $false;
         7z x $archivePath -o"$tempDir" | WriteSectionBody;
-        HandleExternalProcessError("Archive decompressing failed.");
-        WriteLine
-        
+        HandleExternalProcessError "Failed to decompress archive.";
+        WriteLine;
+
         # Untar archive
         $tarPath = $archivePath.Substring(0, $archivePath.Length - 3); # Remove .gz
-        WriteSectionHeader "Untaring `"$tarPath`" to `"$tempDir`":" $false;    
+        WriteSectionHeader "Untaring `"$tarPath`" to `"$tempDir`":" $false;
         7z x $tarPath -o"$tempDir" | WriteSectionBody;
-        HandleExternalProcessError("Archive untaring failed.");
-        WriteLine
-        
+        HandleExternalProcessError "Failed to untar archive.";
+        WriteLine;
+
         # Copy node to package
         $archiveDir = $tarPath.Substring(0, $tarPath.Length - 4); # Remove .tar
-        $nodePath = Join-Path -path $archiveDir -childpath "/bin/node";
+        $nodePath = Join-Path $archiveDir "/bin/node";
         WriteSectionHeader "Copying `"$nodePath`" to `"$packageNodeDir`":";
-        copy-item -path $nodePath -destination $packageNodeDir;
-        WriteSectionFooter "node copied.";       
+        Copy-Item $nodePath $packageNodeDir;
+        WriteSectionFooter "node copied.";
     }
 
     # Remove temp directory
     WriteSectionHeader "Removing `"$tempDir`":";
-    remove-item "$tempDir" -r;
+    Remove-Item "$tempDir" -Recurse;
     WriteSectionFooter "`"$tempDir`" removed.";
 
     DecreaseIndent;
@@ -238,23 +210,23 @@ function RetrieveSharedVerificationAssets() {
     gpg --keyserver pool.sks-keyservers.net --recv-keys DD8F2338BAE7501E3DD5AC78C273792F7D83545D 2>&1 | ForEach-Object { "$_" } | WriteSectionBody;
     gpg --keyserver pool.sks-keyservers.net --recv-keys A48C2BEE680E841632CD4E44F07496B3EB3C1762 2>&1 | ForEach-Object { "$_" } | WriteSectionBody;
     $ErrorActionPreference = "stop";
-    HandleExternalProcessError("GnuPG keys retrieval failed.");
+    HandleExternalProcessError "Failed to retrieve GnuPG keys.";
     WriteLine;
 }
 
 function RetrieveVersionVerificationAssets($version) {
     # Download shasums
     $shasumsUri = "https://nodejs.org/dist/v$version/SHASUMS256.txt";
-    $shasumsPath = Join-Path -path $objDir -childpath "shasums256.txt";
+    $shasumsPath = Join-Path $objDir "shasums256.txt";
     WriteSectionHeader "Downloading `"$shasumsUri`" to `"$shasumsPath`":";
-    invoke-webrequest -uri $shasumsUri -outfile $shasumsPath;
+    Invoke-WebRequest $shasumsUri -OutFile $shasumsPath;
     WriteSectionFooter "`"$shasumsUri`" downloaded.";
 
     # Retrieve shasums file signature
     $shasumsSigUri = "https://nodejs.org/dist/v$version/SHASUMS256.txt.sig";
-    $shasumsSigPath = Join-Path -path $objDir -childpath "shasums256.txt.sig";
+    $shasumsSigPath = Join-Path $objDir "shasums256.txt.sig";
     WriteSectionHeader "Downloading `"$shasumsSigUri`" to `"$shasumsSigPath`":";
-    invoke-webrequest -uri $shasumsSigUri -outfile $shasumsSigPath
+    Invoke-WebRequest $shasumsSigUri -OutFile $shasumsSigPath;
     WriteSectionFooter "`"$shasumsSigUri`" downloaded.";
 
     # Verify shasums file signature
@@ -267,68 +239,139 @@ function RetrieveVersionVerificationAssets($version) {
     # causes a NativeCommandError - https://stackoverflow.com/questions/10666101/lastexitcode-0-but-false-in-powershell-redirecting-stderr-to-stdout-gives?noredirect=1&lq=1.
     # We work around it by writing plain strings to stdout.
     #
-    # Considering that the signer isn't "trusted", this verification might seem like theater. But, it actually does improve security 
+    # Considering that the signer isn't "trusted", this verification might seem like theater. But, it actually does improve security
     # since for shasums256.txt to be compromised, both https://nodejs.org and pool.sks-keyservers.net would need to be compromised.
     WriteSectionHeader "Verifying `"$shasumsPath`":";
     $ErrorActionPreference = "continue";
-    $gpgVerifyOutput = gpg --verify $shasumsSigPath $shasumsPath 2>&1 | ForEach-Object { "$_" }
+    $gpgVerifyOutput = gpg --verify $shasumsSigPath $shasumsPath 2>&1 | ForEach-Object { "$_" };
     $ErrorActionPreference = "stop";
-    HandleExternalProcessError("Shasums verification failed.");
-    $gpgVerifyOutput | WriteSectionBody;
-    WriteLine
+    HandleExternalProcessError "Failed to verify shasums.";
+    WriteSectionBody $gpgVerifyOutput;
+    WriteLine;
     if (-not($gpgVerifyOutput[2].StartsWith("gpg: Good signature from"))) {
-        throw "Shasums verification failed."
+        throw "Failed to verify shasums.";
     }
+}
+
+function UpdateChangelog($version) {
+    WriteSectionHeader "Adding changelog item for $($version):";
+    $additionMade = $false;
+    $newChangelog = Get-Content $changelogPath | ForEach-Object {
+        # Add before first version line
+        if (-not($additionMade) -and $_ -match $changelogVersionLinePattern) {
+            AddChangelogItem $version;
+            $additionMade = $true;
+        }
+
+        Write-Output $_; # Write existing line
+    };
+    # Changelog has no items yet
+    if (-not($additionMade)) {
+        $newChangelogItem = AddChangelogItem $version $true;
+        $newChangelog = $newChangelog + $newChangelogItem;
+    }
+    $newChangelog | Set-Content $changelogPath;
+
+    # Verify that changelog has changed
+    WriteSectionHeader "Verifying `"$changelogPath`" has changed:";
+    if ((git -c "core.safecrlf=false" diff --name-only | Where-Object { $_ -eq $changelogName }).Length -eq 0) {
+        throw "Changelog unexpectedly unchanged.";
+    }
+    WriteSectionFooter "Changelog has changed.";
+
+    # Stage changelog
+    WriteSectionHeader "Staging `"$changelogPath`":";
+    git -c "core.safecrlf=false" add $changelogPath;
+    HandleExternalProcessError "Failed to stage changelog.";
+    WriteSectionFooter "Staged changelog.";
+    
+    # Commit changes to changelog
+    WriteSectionHeader "Comitting `"$changelogPath`" changes:";    
+    git -c "user.email=$commitAuthorEmail" -c "user.name=$commitAuthorName" commit -m "Added changelog item for $version." | WriteSectionBody;
+    HandleExternalProcessError "Failed to commit changelog.";
+    WriteLine;
+
+    # Tag commit
+    WriteSectionHeader "Tagging commit:";    
+    git -c "user.email=$commitAuthorEmail" -c "user.name=$commitAuthorName" tag -a $version -m "Released $version";
+    HandleExternalProcessError "Failed to tag commit.";
+    WriteSectionFooter "Tagged commit.";
+
+    # Push changes to Github
+    WriteSectionHeader "Pushing tag and commit to `"$redistRepo`":";
+    git push -u $redistRepoAuthenticated -q --follow-tags | WriteSectionBody;
+    HandleExternalProcessError "Failed to push tag and commit.";
+    WriteLine;
+}
+
+function AddChangelogItem($version, $newlineBefore) {
+    $majorVersion = [regex]::Match($version, "^(\d+)\.").Captures.Groups[1].Value;
+    $output = @"
+## [$version](https://github.com/nodejs/node/blob/master/doc/changelogs/CHANGELOG_V$majorVersion.md#$version) - $utcDate
+### Executables
+
+"@;
+    foreach ($runtimeIdentifier in $archivesToDownload.Keys) {
+        $output += "- $runtimeIdentifier`n";
+    }
+    if ($newlineBefore) {
+        $output = "`n$output";
+    }
+    Write-Output $output;
+    WriteSectionBody $output
+    WriteLine;
 }
 
 # Utils
 function Install7zip {
-    WriteSectionHeader "Installing 7zip:" $false;   
+    WriteSectionHeader "Installing 7zip:" $false;
 
     # Check whether 7z exists
-    $install7zip = $null -eq (get-command "7z" -ErrorAction "SilentlyContinue");
+    $install7zip = $null -eq (Get-Command "7z" -ErrorAction "SilentlyContinue");
 
     # Check existing installation version
     if (-not($install7zip)) {
         $7zOutput = 7z;
-        HandleExternalProcessError("7zip invocation failed.");
+        HandleExternalProcessError "Failed to invoke 7zip.";
         $7zOutput | WriteSectionBody;
 
-        if (($7zOutput | select-string -pattern "7-Zip 19.00" -simplematch).length -eq 0) {
+        if (($7zOutput | Select-String "7-Zip 19.00" -SimpleMatch).Length -eq 0) {
             $install7zip = $true;
         }
-    } 
+    }
 
     if ($install7zip) {
         choco install 7zip.install --version="19.00" -y | WriteSectionBody;
-        HandleExternalProcessError("7zip installation failed.");
+        HandleExternalProcessError "Failed to install 7zip.";
+        WriteLine;
         ResetEnv;
     }
     else {
-        WriteSectionFooter "7zip 19.0 already installed." $true; 
+        WriteSectionFooter "7zip 19.0 already installed." $true;
     }
 }
 
 function InstallGpg {
-    WriteSectionHeader "Installing GnuPG:";  
+    WriteSectionHeader "Installing GnuPG:";
 
     # Check whether gpg exists
-    $installGpg = $null -eq (get-command "gpg" -ErrorAction "SilentlyContinue");
+    $installGpg = $null -eq (Get-Command "gpg" -ErrorAction "SilentlyContinue");
 
     # Verify existing installation version
     if (-not($installGpg)) {
         $gpgOutput = gpg --version;
-        HandleExternalProcessError("GnuPG invocation failed.");
-        $gpgOutput | WriteSectionBody;
+        HandleExternalProcessError "Failed to invoke GnuPG.";
+        WriteSectionBody $gpgOutput;
 
-        if (($gpgOutput | select-string -pattern "gpg (GnuPG) 2.2.19" -simplematch).length -eq 0) {
+        if (($gpgOutput | Select-String "gpg (GnuPG) 2.2.19" -SimpleMatch).length -eq 0) {
             $installGpg = $true;
         }
     }
 
     if ($installGpg) {
         choco install gnupg --version="2.2.19" -y | WriteSectionBody;
-        HandleExternalProcessError("GnuPG installation failed.");
+        HandleExternalProcessError "Failed to install GnuPG.";
+        WriteLine;
         ResetEnv;
     }
     else {
@@ -337,25 +380,26 @@ function InstallGpg {
 }
 
 function InstallNuget {
-    WriteSectionHeader "Installing NuGet:";  
+    WriteSectionHeader "Installing NuGet:";
 
     # Check whether gpg exists
-    $installNuget = $null -eq (get-command "nuget" -ErrorAction "SilentlyContinue");
+    $installNuget = $null -eq (Get-Command "nuget" -ErrorAction "SilentlyContinue");
 
     # Verify existing installation version
     if (-not($installNuget)) {
         $nugetOutput = nuget;
-        HandleExternalProcessError("NuGet invocation failed.");
-        $nugetOutput | WriteSectionBody;
+        HandleExternalProcessError "Failed to invoke NuGet.";
+        WriteSectionBody $nugetOutput;
 
-        if (($nugetOutput | select-string -pattern "NuGet Version: 5.4.0" -simplematch).length -eq 0) {
+        if (($nugetOutput | Select-String "NuGet Version: 5.4.0" -SimpleMatch).length -eq 0) {
             $installNuget = $true;
         }
     }
 
     if ($installNuget) {
         choco install nuget.commandline --version="5.4.0" -y | WriteSectionBody;
-        HandleExternalProcessError("NuGet installation failed.");
+        HandleExternalProcessError "Failed to install NuGet.";
+        WriteLine;
         ResetEnv;
     }
     else {
@@ -369,37 +413,36 @@ function ResetEnv {
 
 function HandleExternalProcessError($message) {
     if ($lastExitCode -ne 0) {
-        throw $message
+        throw $message;
     }
 }
 
-function WriteSectionBody() { 
+function WriteSectionBody() {
     param(
         [Parameter(ValueFromPipeline = $true)]
         $content
     )
-        
+
     process {
         if (-not($content -is [string])) {
-            ;
-            $content = $content | out-string;
+            $content = $content | Out-String;
         }
-            
+
         # TODO if line is longer than console we should split it up
         $trimmedContent = $content.Trim();
-        
+
         if (-not($trimmedContent)) {
             Write-Host ""; # Shortcut for empty lines
         }
         else {
             # TrimEnd so we wrapping doesn't cause new empty lines
-            $trimmedContent.Replace("`r", "").Split("`n").TrimEnd() | ForEach-Object { write-host "$indentation    $_"; };
+            $trimmedContent.Replace("`r", "").Split("`n").TrimEnd() | ForEach-Object { Write-Host "$indentation    $_"; };
         }
     }
 }
 
 function WriteSectionHeader($content, $newlineAfter = $true) {
-    write-host "$indentation$content";
+    Write-Host "$indentation$content";
 
     if ($newlineAfter) {
         Write-Host "";
@@ -411,11 +454,11 @@ function WriteSectionFooter($content, $newlineBefore) {
         Write-Host "";
     }
 
-    write-host "$($indentation)    $content`n";
+    Write-Host "$($indentation)    $content`n";
 }
 
 function WriteLine {
-    write-host "";
+    Write-Host "";
 }
 
 function SetIndent($indentLevel) {
@@ -445,109 +488,83 @@ function ResetIndent {
 
 #-----------------------------------------------------------[Execution]------------------------------------------------------------
 $prevErrorActionPreference = $ErrorActionPreference;
-$exitCode = 1;
-
-function AddAddedPackageVersion($version) {
-    $addedPackageVersions.Add($version);
-}
-
-function UpdateChangelog {
-    $changelogPath = Join-Path -path $rootDir -childpath "Changelog.md";
-    WriteSectionHeader "Updating `"$changelogPath`":";
-    IncreaseIndent;
-    
-    # Check for added package versions
-    WriteSectionHeader "Checking for added package versions:";
-    if ($addedPackageVersions.Count -eq 0) {
-        WriteSectionFooter "No added package versions";
-        return;
-    }
-    else {
-        $addedPackageVersions | WriteSectionBody;
-        WriteLine;
-    }
-
-    # Add added package versions to changelog
-    $changelogPath = Join-Path -path $rootDir -childpath "Changelog.md";
-    WriteSectionHeader "Updating `"$changelogPath`":"
-    IncreaseIndent;
-    $additionsMade = $false;
-    $utcDate = [System.DateTime]::UtcNow.ToString("MMM d, yyyy");
-    $newChangelog = get-content $changelogPath | ForEach-Object {
-        # Add before first version line
-        if (-not($additionsMade) -and $_ -match $changelogVersionLinePattern) {
-            foreach ($addedPackageVersion in $addedPackageVersions) {
-                WriteSectionHeader "Adding package version $($addedPackageVersion):"
-                $majorVersion = [regex]::Match($addedPackageVersion, "^(\d+)\.").captures.groups[1].value;
-                $output = @"
-## [$addedPackageVersion](https://github.com/nodejs/node/blob/master/doc/changelogs/CHANGELOG_V$majorVersion.md#$addedPackageVersion) - $utcDate
-### Executables
-
-"@;
-                foreach ($runtimeIdentifier in $archivesToDownload.keys) {
-                    $output += "- $runtimeIdentifier`n";
-                }
-                write-output $output;
-                $output | WriteSectionBody;
-                WriteLine
-            }
-            $additionsMade = $true;
-        }
-
-        write-output $_; # Write existing line
-    };
-    $newChangelog | Set-Content $changelogPath
-
-    DecreaseIndent;
-    DecreaseIndent;
-}
+$exitCode = 0;
 
 try {
-    # # Make all errors terminating errors so we catch and log them
-    # $ErrorActionPreference = 'stop';
+    # Make all errors terminating errors so we catch and log them
+    $ErrorActionPreference = 'stop';
 
-    # # Find new versions
-    # WriteSectionHeader "Finding new versions:"
-    # IncreaseIndent;
-    # $newVersionsFound = FindNewVersions;
-    # if (-not($newVersionsFound)) {
-    #     WriteSectionFooter "No new versions found.";
-    #     exit 0;
-    # }
-    # ResetIndent;
+    # Constants
+    # Map of selected .Net runtime identifiers to information on the files to download for them.
+    $archivesToDownload = @{
+        "linux-arm"   = @{ "platform" = "linux-armv7l"; "extension" = ".tar.gz" }
+        "linux-arm64" = @{ "platform" = "linux-arm64"; "extension" = ".tar.gz" }
+        "linux-x64"   = @{ "platform" = "linux-x64"; "extension" = ".tar.gz" }
+        "osx-x64"     = @{ "platform" = "darwin-x64"; "extension" = ".tar.gz" }
+        "win-x64"     = @{ "platform" = "win-x64"; "extension" = ".7z" }
+        "win-x86"     = @{ "platform" = "win-x86"; "extension" = ".7z" }
+    };
+    $dirSeparator = [IO.Path]::DirectorySeparatorChar;
+    $utcDate = [DateTime]::UtcNow.ToString("MMM d, yyyy");
+    $rootDir = resolve-path $env:DEFAULT_WORKING_DIRECTORY;
+    $srcDir = Join-Path $rootDir "src";
+    $objDir = Join-Path $rootDir "obj";
+    $tempDir = Join-Path $objDir "temp";
+    $changelogName = "Changelog.md";
+    $changelogPath = Join-Path $rootDir $changelogName;
+    $changelogVersionLinePattern = '^##[ \t]*\[(\d+\.\d+\.\d+)\]';
+    $nugetPat = $env:NUGET_PAT;
+    $nugetEndpoint = "https://apiint.nugettest.org/v3/index.json";
+    $commitAuthorName = "JeringBot";
+    $commitAuthorEmail = "bot@jering.tech";
+    $githubPat = $env:GITHUB_PAT;
+    $redistRepo = "https://github.com/JeringTech/Redist.NodeJS.git";
+    $redistRepoAuthenticated = $redistRepo -replace "github.com", "$githubPat@github.com";
+    $nodejsRepo = "https://github.com/nodejs/node.git";
 
-    # # Install tools
-    # WriteSectionHeader "Installing tools:";
-    # IncreaseIndent;
-    # Install7zip;
-    # InstallGpg;
-    # InstallNuget;
-    # ResetIndent;
+    # Variables
+    $indentation = "";
+
+    # Find new versions
+    WriteSectionHeader "Finding new versions:";
+    IncreaseIndent;
+    $newVersions = FindNewVersions;
+    if (-not($newVersions)) {
+        WriteSectionFooter "No new versions found.";
+        exit 0;
+    }
+    ResetIndent;
+
+    # Checkout master branch (can't commit in detached head state)
+    WriteSectionHeader "Checking out master:";
+    git checkout master | WriteSectionBody;
+    HandleExternalProcessError "Failed to checkout master.";
+    WriteLine;
+
+    # Install tools
+    WriteSectionHeader "Installing tools:";
+    IncreaseIndent;
+    Install7zip;
+    InstallGpg;
+    InstallNuget;
+    ResetIndent;
+
+    # Retrieve shared verification assets
+    RetrieveSharedVerificationAssets;
     
-    # # Retrieve shared verification assets
-    # RetrieveSharedVerificationAssets;
-
-    # # TODO temp
-    # $newVersions = "10.0.0";
-
-    # # Add packages
-    # $newVersions | foreach-object { AddPackage $_ };
+    # Add packages
+    $newVersions | ForEach-Object { AddPackage $_ };
 }
 catch {
     WriteSectionHeader "Error:";
     $_ | WriteSectionBody;
-    WriteLine;
-    $exitCode = 0;
+
+    $exitCode = 1;
 }
 finally {
-    # Update changelog
-    # - Even if an error occurred, we want to update changelog to include any packages we pushed.
-    # UpdateChangelog;
-
-    # TODO Push changelog
-    
     # Reset
     $ErrorActionPreference = $prevErrorActionPreference;
 
+    # Exit
     exit $exitCode;
 }
