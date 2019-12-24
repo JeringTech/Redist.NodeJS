@@ -9,14 +9,12 @@
         <license type="expression">Apache-2.0</license>
         <licenseUrl>https://licenses.nuget.org/Apache-2.0</licenseUrl>
         <icon>nuget_icon.png</icon>
-        <projectUrl>https://www.jering.tech/utilities/jering.javascript.nodejs/index</projectUrl>
+        <projectUrl>https://www.jering.tech/utilities/jering.redist.nodejs/index</projectUrl>
         <requireLicenseAcceptance>false</requireLicenseAcceptance>
         <description>
             NodeJS executables for Windows, macOS and Linux.
 
-            We recommend using this package through Jering.Javascript.NodeJS.
-
-            This package is updated automatically.
+We recommend using this package through Jering.Javascript.NodeJS. This package is updated automatically.
         </description>
         <copyright>© 2018-2020 Jering. All rights reserved.</copyright>
         <tags>nodejs</tags>
