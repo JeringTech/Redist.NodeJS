@@ -20,9 +20,6 @@
 
 #-----------------------------------------------------------[Functions]------------------------------------------------------------
 
-# TODO
-# - read through scheduled build logs
-
 function FindNewVersions() {
     # Retrieve release versions
     WriteSectionHeader "Retrieving release versions from `"$nodejsRepo`":";
@@ -33,10 +30,16 @@ function FindNewVersions() {
     WriteLine;
 
     # Retrieve package versions
-    WriteSectionHeader "Retrieving package versions from `"$changelogPath`":";
-    $packageVersions = Get-Content $changelogPath | Select-String $changelogVersionLinePattern | ForEach-Object { $_.Matches.Groups[1].Value };
-    WriteSectionBody $packageVersions;
-    WriteLine;
+    WriteSectionHeader "Retrieving package versions:";
+    $packageVersions = git tag -l;
+    HandleExternalProcessError "Failed to retrieve package versions.";
+    if ($packageVersions) {
+        WriteSectionBody $packageVersions;
+        WriteLine;
+    }
+    else {
+        WriteSectionBody "No package versions`n";
+    }
 
     # Find new versions
     WriteSectionHeader "Identifying new versions:";
@@ -341,7 +344,7 @@ function Install7zip {
     }
 
     if ($install7zip) {
-        choco install 7zip.install --version="19.00" -y | WriteSectionBody;
+        choco install 7zip.install --version="19.00" -y -r --no-progress | WriteSectionBody;
         HandleExternalProcessError "Failed to install 7zip.";
         WriteLine;
         ResetEnv;
@@ -369,7 +372,7 @@ function InstallGpg {
     }
 
     if ($installGpg) {
-        choco install gnupg --version="2.2.19" -y | WriteSectionBody;
+        choco install gnupg --version="2.2.19" -y -r --no-progress | WriteSectionBody;
         HandleExternalProcessError "Failed to install GnuPG.";
         WriteLine;
         ResetEnv;
@@ -397,7 +400,7 @@ function InstallNuget {
     }
 
     if ($installNuget) {
-        choco install nuget.commandline --version="5.4.0" -y | WriteSectionBody;
+        choco install nuget.commandline --version="5.4.0" -y -r --no-progress | WriteSectionBody;
         HandleExternalProcessError "Failed to install NuGet.";
         WriteLine;
         ResetEnv;
@@ -551,7 +554,7 @@ try {
 
     # Retrieve shared verification assets
     RetrieveSharedVerificationAssets;
-    
+
     # Add packages
     $newVersions | ForEach-Object { AddPackage $_ };
 }
