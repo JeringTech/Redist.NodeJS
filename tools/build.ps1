@@ -528,6 +528,12 @@ try {
     # Variables
     $indentation = "";
 
+    # Checkout master branch (can't commit in detached head state)
+    WriteSectionHeader "Checking out master:";
+    git checkout master | WriteSectionBody;
+    HandleExternalProcessError "Failed to checkout master.";
+    WriteLine;
+
     # Find new versions
     WriteSectionHeader "Finding new versions:";
     IncreaseIndent;
@@ -537,12 +543,6 @@ try {
         exit 0;
     }
     ResetIndent;
-
-    # Checkout master branch (can't commit in detached head state)
-    WriteSectionHeader "Checking out master:";
-    git checkout master
-    HandleExternalProcessError "Failed to checkout master.";
-    WriteLine;
 
     # Install tools
     WriteSectionHeader "Installing tools:";
