@@ -540,9 +540,7 @@ try {
 
     # Checkout master branch (can't commit in detached head state)
     WriteSectionHeader "Checking out master:";
-    git checkout master | WriteSectionBody;
-    WriteSectionBody $LASTEXITCODE;
-    WriteSectionBody "After git checkout master";
+    git checkout master
     HandleExternalProcessError "Failed to checkout master.";
     WriteLine;
 
