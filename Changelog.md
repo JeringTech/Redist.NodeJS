@@ -1,5 +1,5 @@
 # Changelog
-The first three digits of each version indicates the version of [NodeJS](https://nodejs.org/en/) in the [NuGet package](https://www.nuget.org/packages/Jering.Redist.NodeJS/). E.g `12.13.1.1` would contains NodeJS `12.13.1`. We add a fourth digit when we make changes to NuGet package structure/metadata. E.g `12.13.1.2` and `12.13.1.1` would both contain NodeJS `12.13.1` but have different structures/metadata.
+The first three digits of each version indicate the [NodeJS](https://nodejs.org/en/) version. E.g NuGet package `12.13.1.1` would contain NodeJS `12.13.1`. We add a fourth digit when we make changes to package structure/metadata. E.g NuGet packages `12.13.1.2` and `12.13.1.1` would both contain NodeJS `12.13.1` but have different structures/metadata.
 
 ## [13.5.0](https://github.com/nodejs/node/blob/master/doc/changelogs/CHANGELOG_V13.md#13.5.0) - Dec 25, 2019
 ### Executables
