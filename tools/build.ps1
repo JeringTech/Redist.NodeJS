@@ -49,7 +49,7 @@ function FindNewVersions() {
         WriteLine;
     }
     else {
-        WriteSectionFooter "No new versions." $true;
+        WriteSectionFooter "No new versions.";
     }
 
     return $newVersions;
@@ -539,7 +539,6 @@ try {
     IncreaseIndent;
     $newVersions = FindNewVersions;
     if (-not($newVersions)) {
-        WriteSectionFooter "No new versions found.";
         exit 0;
     }
     ResetIndent;
