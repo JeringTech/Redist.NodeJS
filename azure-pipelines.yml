@@ -1,3 +1,4 @@
+pr: none
 trigger: none
 schedules:
 - cron: "0 0 * * *"
@@ -5,6 +6,7 @@ schedules:
   branches:
     include:
     - master
+  always: true
 
 jobs:
 - job: "Build"
