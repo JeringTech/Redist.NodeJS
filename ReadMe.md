@@ -1,6 +1,5 @@
 # Jering.Redist.NodeJS
-TODO setup pipeline:  
-[![Build Status](https://dev.azure.com/JeringTech/Redist.NodeJS/_apis/build/status/Jering.Redist.NodeJS-CI?branchName=master)](https://dev.azure.com/JeringTech/Redist.NodeJS/_build/latest?definitionId=5?branchName=master)
+[![Build Status](https://dev.azure.com/JeringTech/Redist.NodeJS/_apis/build/status/JeringTech.Redist.NodeJS?branchName=master)](https://dev.azure.com/JeringTech/Redist.NodeJS/_build/latest?definitionId=9&branchName=master)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/Pkcs11Interop/Pkcs11Interop/blob/master/LICENSE.md)
 TODO publish package:  
 [![NuGet](https://img.shields.io/nuget/vpre/Jering.Redist.NodeJS.svg?label=nuget)](https://www.nuget.org/packages/Jering.Redist.NodeJS/)
