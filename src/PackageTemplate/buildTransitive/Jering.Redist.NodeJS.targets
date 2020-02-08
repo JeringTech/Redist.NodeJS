@@ -1,14 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 
-    Use of InitialTargets attribute: if multiple imported files define InitialTargets, all targets mentioned will be run, in the order the imports are 
-    encountered - https://docs.microsoft.com/en-us/visualstudio/msbuild/project-element-msbuild?view=vs-2019#attributes. 
--->
-<Project InitialTargets="IncludeNodeJSExecutables" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
     <!-- 
-        MSBuild never copies native assets for legacy projects (projects using the legacy .csproj format and packages.config).
-        So we manually copy assets.
-
-        TODO Even if we add CopyToPublishDirectory to our None items, msbuild never copies native assets to the publish directory.
+        Detect legacy projects (projects using the legacy .csproj format and packages.config).
     -->
     <PropertyGroup>
         <IsLegacyProject>false</IsLegacyProject>
@@ -19,42 +12,33 @@
     </PropertyGroup>
 
     <!-- 
-        .Net SDK doesn't copy native assets for .Net framework library builds if no RuntimeIdentifier is specified. This is an issue because
-        because:
-            - .Net framework test projects are libraries.
-            - Assets are required when we publish libraries for use as plugins.
-        So we manually copy assets.
+        .Net SDK doesn't copy native assets for .Net framework class library builds if no runtime identifier is specified. This is an issue for two
+        reasons: firstly, .Net framework test projects are libraries. Secondly, assets are required when we publish libraries for use as plugins.
+
+        By default, MSBuild never copies native assets for legacy projects. TODO Even if we add CopyToPublishDirectory to our None items, MSBuild doesn't
+        copy native assets to the publish directory.
+
+        Copy manually in these situations.
     -->
-    <PropertyGroup Condition="'$(NodeJSExecutables)' == ''
+    <PropertyGroup Condition="'$(NodeJSExecutable)' == ''
                               And (('$(TargetFrameworkIdentifier)' == '.NETFramework'
                               And '$(OutputType)' == 'Library'
                               And '$(RuntimeIdentifier)' == '')
                               Or '$(IsLegacyProject)' == 'true')">
-        <NodeJSExecutables Condition="'$(PlatformTarget)' == 'x64'">win-x64</NodeJSExecutables>
-        <NodeJSExecutables Condition="'$(PlatformTarget)' != 'x64'">win-x86</NodeJSExecutables>
+        <NodeJSExecutable Condition="'$(PlatformTarget)' == 'x64'">win-x64</NodeJSExecutable>
+        <NodeJSExecutable Condition="'$(PlatformTarget)' != 'x64'">win-x86</NodeJSExecutable>
     </PropertyGroup>
 
     <!-- 
-        If NodeJSExecutables is specified, copy executables manually. Note that if .Net SDK already copies native assets,
-        these manually copied executables are copied in addition to what .Net SDK copies.
+        If NodeJSExecutable is specified, copy manually. Note that if .Net SDK already copies native assets, this asset is copied in addition to what 
+        .Net SDK copies.
 
-        TODO Suppress default native asset copying when NodeJSExecutables is specified. This must be done without affecting copying of native
-        assets from other dependencies.
+        TODO Suppress default native asset copying when NodeJSExecutable is specified. This can partially be done by manipulating NativeCopyLocalItems,
+        the exception is app local assets (runtime/<rid>/native/*), which don't show up in NativeCopyLocalItems.
     -->
-    <Target Name="IncludeNodeJSExecutables" Condition="'$(NodeJSExecutables)' != ''">
-        <ItemGroup>
-            <!-- Split property into a list of items -->
-            <NodeJSRuntimeIdentifier Include="$(NodeJSExecutables)"/>
-            <!-- Create placeholder since we don't want to affect existing None items when we set Link -->
-            <NonePlaceholder Include="$(MSBuildThisFileDirectory)\..\runtimes\%(NodeJSRuntimeIdentifier.Identity)\native\node*"
-                             RidPlaceholder = "%(NodeJSRuntimeIdentifier.Identity)"
-                             CopyToOutputDirectory="PreserveNewest"
-                             Visible="false"/>
-            <!-- Set Link only if multiple runtime identifiers are specified -->
-            <NonePlaceholder Condition="@(NodeJSRuntimeIdentifier->Count()) &gt; 1"
-                             Link="runtimes\%(NonePlaceholder.RidPlaceholder)\%(NonePlaceholder.Filename)%(NonePlaceholder.Extension)"/>
-            <!-- Create None items -->
-            <None Include="%(NonePlaceholder.Identity)" Link="%(NonePlaceholder.Link)" CopyToOutputDirectory="PreserveNewest" Visible="false" />
-        </ItemGroup>
-    </Target>
+    <ItemGroup Condition="'$(NodeJSExecutable)' != ''">
+        <None Include="$(MSBuildThisFileDirectory)\..\runtimes\$(NodeJSExecutable)\native\node*"
+              CopyToOutputDirectory="PreserveNewest"
+              Visible="false" />
+    </ItemGroup>
 </Project>
