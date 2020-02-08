@@ -18,5 +18,14 @@ We recommend using this package through Jering.Javascript.NodeJS. This package i
         <copyright>© 2018-2020 Jering. All rights reserved.</copyright>
         <tags>nodejs</tags>
         <repository type="git" url="https://github.com/JeringTech/Redist.NodeJS" />
+        <dependencies>
+            <!-- 
+                Prior to the .NET Core 3.0 SDK, .NET Framework projects would only have a RuntimeIdentifier graph if the
+                Microsoft.NETCore.Platforms package was (transitively) referenced. This meant that native assets would
+                only be selected if the platforms package was referenced or if the RuntimeIdentifier matched exactly.
+                - https://github.com/dotnet/sdk/blob/b28a8efbfb30d84019351abb3aa9a2b15e008662/src/Tasks/Microsoft.NET.Build.Tasks/GetDefaultPlatformTargetForNetFramework.cs
+            -->
+            <dependency id="Microsoft.NETCore.Platforms" version="3.1.0" />
+        </dependencies>
     </metadata>
 </package>
