@@ -1,6 +1,15 @@
 # Changelog
 The first three digits of each version indicate the [NodeJS](https://nodejs.org/en/) version. E.g NuGet package `12.13.1.1` would contain NodeJS `12.13.1`. We add a fourth digit when we make changes to package structure/metadata. E.g NuGet packages `12.13.1.2` and `12.13.1.1` would both contain NodeJS `12.13.1` but have different structures/metadata.
 
+## [13.10.0](https://github.com/nodejs/node/blob/master/doc/changelogs/CHANGELOG_V13.md#13.10.0) - Mar 5, 2020
+### Executables
+- osx-x64
+- win-x86
+- linux-x64
+- linux-arm64
+- linux-arm
+- win-x64
+
 ## [13.9.0](https://github.com/nodejs/node/blob/master/doc/changelogs/CHANGELOG_V13.md#13.9.0) - Feb 19, 2020
 ### Executables
 - linux-arm
