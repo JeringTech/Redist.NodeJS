@@ -366,19 +366,19 @@ function InstallGpg {
         HandleExternalProcessError "Failed to invoke GnuPG.";
         WriteSectionBody $gpgOutput;
 
-        if (($gpgOutput | Select-String "gpg (GnuPG) 2.2.19" -SimpleMatch).length -eq 0) {
+        if (($gpgOutput | Select-String "gpg (GnuPG) 2.2.20" -SimpleMatch).length -eq 0) {
             $installGpg = $true;
         }
     }
 
     if ($installGpg) {
-        choco install gnupg --version="2.2.19" -y -r --no-progress | WriteSectionBody;
+        choco install gnupg --version="2.2.20" -y -r --no-progress | WriteSectionBody;
         HandleExternalProcessError "Failed to install GnuPG.";
         WriteLine;
         ResetEnv;
     }
     else {
-        WriteSectionFooter "GnuPG 2.2.19 already installed." $true;
+        WriteSectionFooter "GnuPG 2.2.20 already installed." $true;
     }
 }
 
